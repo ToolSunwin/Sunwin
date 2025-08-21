@@ -1,101 +1,54 @@
 // thuatoan.js
 class MasterPredictor {
-    constructor(maxHistorySize = 1000) {
-        this.history = []; 
-        this.maxHistorySize = maxHistorySize;
+    constructor() {
+        this.history = [];             // lưu lịch sử {score, result}
+        this.currentPrediction = null; // dự đoán đang dùng cho phiên hiện tại
+        this.winStreak = 0;            // số ván ăn liên tiếp
+        this.loseStreak = 0;           // số ván thua liên tiếp
+        this.lastSession = null;       // để kiểm tra có sang phiên mới chưa
     }
 
     async updateData(gameData) {
         this.history.push(gameData);
-        if (this.history.length > this.maxHistorySize) {
-            this.history.shift(); 
-        }
-    }
+        if (this.history.length > 1000) this.history.shift();
 
-    /**
-     * Logistic Regression đơn giản: score cao thì nghiêng về Tài
-     */
-    logisticPredict(score) {
-        // tham số ước lượng (train sơ bộ từ luật Tài >= 11, Xỉu <= 10)
-        const w0 = -7; // bias
-        const w1 = 0.8; // trọng số score
-        const z = w0 + w1 * score;
-        const prob = 1 / (1 + Math.exp(-z));
-        return { prediction: prob > 0.5 ? "Tài" : "Xỉu", confidence: prob };
-    }
-
-    /**
-     * Markov chain: nhìn chuỗi gần nhất
-     */
-    markovPredict(seqLength = 3) {
-        if (this.history.length <= seqLength) return { prediction: "?", confidence: 0 };
-
-        const recentSeq = this.history.slice(-seqLength).map(h => h.result).join('');
-        let nextCounts = { "Tài": 0, "Xỉu": 0 };
-
-        for (let i = 0; i < this.history.length - seqLength; i++) {
-            const seq = this.history.slice(i, i + seqLength).map(h => h.result).join('');
-            if (seq === recentSeq) {
-                const next = this.history[i + seqLength].result;
-                nextCounts[next]++;
+        // cập nhật kết quả thắng/thua dựa vào dự đoán trước đó
+        if (this.currentPrediction) {
+            if (gameData.result === this.currentPrediction) {
+                this.winStreak++;
+                this.loseStreak = 0;
+            } else {
+                this.loseStreak++;
+                this.winStreak = 0;
             }
         }
-
-        const total = nextCounts["Tài"] + nextCounts["Xỉu"];
-        if (total === 0) return { prediction: "?", confidence: 0 };
-
-        const prediction = nextCounts["Tài"] > nextCounts["Xỉu"] ? "Tài" : "Xỉu";
-        const confidence = Math.max(nextCounts["Tài"], nextCounts["Xỉu"]) / total;
-        return { prediction, confidence };
     }
 
-    /**
-     * Thống kê tỷ lệ Tài/Xỉu toàn bộ lịch sử
-     */
-    ratioPredict() {
-        if (this.history.length === 0) return { prediction: "?", confidence: 0 };
+    async predict(sessionId) {
+        // Nếu là phiên mới thì mới tính toán dự đoán
+        if (this.lastSession !== sessionId) {
+            let prediction;
 
-        const taiCount = this.history.filter(h => h.result === "Tài").length;
-        const xiuCount = this.history.length - taiCount;
-        if (taiCount === xiuCount) return { prediction: "?", confidence: 0.5 };
+            if (!this.currentPrediction) {
+                // lần đầu tiên thì random
+                prediction = Math.random() > 0.5 ? "Tài" : "Xỉu";
+            } else {
+                prediction = this.currentPrediction;
 
-        const prediction = taiCount > xiuCount ? "Tài" : "Xỉu";
-        const confidence = Math.max(taiCount, xiuCount) / this.history.length;
-        return { prediction, confidence };
-    }
+                // đảo khi đủ điều kiện
+                if (this.winStreak >= 5 || this.loseStreak >= 3) {
+                    prediction = prediction === "Tài" ? "Xỉu" : "Tài";
+                    this.winStreak = 0;
+                    this.loseStreak = 0;
+                }
+            }
 
-    /**
-     * Ensemble: kết hợp 3 dự đoán
-     */
-    async predict() {
-        if (this.history.length < 20) {
-            return { prediction: "?", confidence: 0 };
+            this.currentPrediction = prediction;
+            this.lastSession = sessionId;
         }
 
-        const lastScore = this.history[this.history.length - 1].score;
-
-        const logistic = this.logisticPredict(lastScore);
-        const markov = this.markovPredict(4);  // thử depth 4
-        const ratio = this.ratioPredict();
-
-        // gán trọng số
-        const weights = { logistic: 0.4, markov: 0.4, ratio: 0.2 };
-
-        // gom dự đoán
-        let scoreTai = 0, scoreXiu = 0;
-        if (logistic.prediction === "Tài") scoreTai += logistic.confidence * weights.logistic;
-        else scoreXiu += (1 - logistic.confidence) * weights.logistic;
-
-        if (markov.prediction === "Tài") scoreTai += markov.confidence * weights.markov;
-        else if (markov.prediction === "Xỉu") scoreXiu += markov.confidence * weights.markov;
-
-        if (ratio.prediction === "Tài") scoreTai += ratio.confidence * weights.ratio;
-        else if (ratio.prediction === "Xỉu") scoreXiu += ratio.confidence * weights.ratio;
-
-        const prediction = scoreTai >= scoreXiu ? "Tài" : "Xỉu";
-        const confidence = Math.max(scoreTai, scoreXiu);
-
-        return { prediction, confidence: parseFloat(confidence.toFixed(3)) };
+        // luôn trả về cùng 1 kết quả trong phiên
+        return { prediction: this.currentPrediction, confidence: 0.5 };
     }
 }
 
