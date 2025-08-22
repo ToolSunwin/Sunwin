@@ -3,68 +3,78 @@ class MasterPredictor {
     constructor(maxHistorySize = 1000) {
         this.history = [];
         this.maxHistorySize = maxHistorySize;
-
-        this.lastPrediction = null;       // giữ kèo đã random cho phiên hiện tại
-        this.lastPredictedHistoryLen = 0; // số phiên khi random lần cuối
-
-        this.winStreak = 0;
-        this.loseStreak = 0;
-
-        this.flipNextBecauseWin5 = false;
-        this.flipNextBecause3WinThenLose = false;
     }
 
     async updateData(gameData) {
+        // gameData: {score, result}
         this.history.push(gameData);
         if (this.history.length > this.maxHistorySize) this.history.shift();
-
-        if (this.lastPrediction) {
-            const isWin = (this.lastPrediction === gameData.result);
-
-            if (isWin) {
-                this.winStreak++;
-                this.loseStreak = 0;
-                if (this.winStreak >= 5) {
-                    this.flipNextBecauseWin5 = true;
-                }
-            } else {
-                const hadWinStreakGTE3 = this.winStreak >= 3;
-                this.loseStreak++;
-                this.winStreak = 0;
-                if (hadWinStreakGTE3) {
-                    this.flipNextBecause3WinThenLose = true;
-                }
-            }
-        }
     }
 
     async predict() {
-        // Nếu chưa có phiên mới (history chưa đổi) → trả lại kết quả đã random
-        if (this.lastPrediction && this.lastPredictedHistoryLen === this.history.length) {
-            return { prediction: this.lastPrediction, confidence: 0.5 };
+        if (this.history.length < 10) {
+            return {
+                prediction: "?",
+                confidence: 0.5,
+                reason: "Chưa đủ dữ liệu để dự đoán"
+            };
         }
 
-        // Phiên mới: random base 50/50
-        let base = Math.random() < 0.5 ? "Tài" : "Xỉu";
-        let prediction = base;
-        let flipped = false;
+        // ================== PHÂN TÍCH ==================
+        const seq = this.history.map(h => h.result);     // chuỗi Tài/Xỉu
+        const totals = this.history.map(h => h.score);   // tổng điểm
+        const last = seq[seq.length - 1];
+        const lastScore = totals[totals.length - 1];
 
-        // Áp dụng nguyên lý flip
-        if (this.flipNextBecauseWin5) {
-            prediction = (base === "Tài") ? "Xỉu" : "Tài";
-            flipped = true;
-            this.flipNextBecauseWin5 = false;
-        } else if (this.flipNextBecause3WinThenLose) {
-            prediction = (base === "Tài") ? "Xỉu" : "Tài";
-            flipped = true;
-            this.flipNextBecause3WinThenLose = false;
+        // 1) Tính streak (chuỗi liên tiếp)
+        let streakLen = 1;
+        for (let i = seq.length - 2; i >= 0; i--) {
+            if (seq[i] === last) streakLen++;
+            else break;
         }
 
-        // Ghi nhớ kèo cho phiên hiện tại
-        this.lastPrediction = prediction;
-        this.lastPredictedHistoryLen = this.history.length;
+        // 2) Tính bias gần đây (20 phiên gần nhất)
+        const recent = seq.slice(-20);
+        const countTai = recent.filter(r => r === "Tài").length;
+        const ratioTai = countTai / recent.length;
 
-        return { prediction, confidence: flipped ? 0.55 : 0.5 };
+        // 3) Tín hiệu band (tổng điểm cực trị)
+        let bandSignal = null;
+        if (lastScore >= 14) bandSignal = "Xỉu";   // quá cao → dễ hồi Xỉu
+        if (lastScore <= 7)  bandSignal = "Tài";   // quá thấp → dễ hồi Tài
+
+        // ================== RA QUYẾT ĐỊNH ==================
+        let prediction = "Tài";
+        let confidence = 0.55;
+        let reason = "Không có cầu mạnh, nghiêng Tài nhẹ";
+
+        if (streakLen >= 3) {
+            prediction = (last === "Tài") ? "Xỉu" : "Tài";
+            confidence = 0.65;
+            reason = `Chuỗi ${streakLen} ${last} → dự đoán gãy`;
+        } else if (ratioTai > 0.65) {
+            prediction = "Xỉu";
+            confidence = 0.6;
+            reason = "Tỉ lệ Tài 20 phiên gần đây quá cao → hồi mean về Xỉu";
+        } else if (ratioTai < 0.35) {
+            prediction = "Tài";
+            confidence = 0.6;
+            reason = "Tỉ lệ Xỉu 20 phiên gần đây quá cao → hồi mean về Tài";
+        } else if (bandSignal) {
+            prediction = bandSignal;
+            confidence = 0.58;
+            reason = `Tổng điểm ${lastScore} nằm vùng cực trị → dễ hồi về ${bandSignal}`;
+        } else if (lastScore >= 9 && lastScore <= 12) {
+            prediction = last === "Tài" ? "Xỉu" : "Tài";
+            confidence = 0.57;
+            reason = "Tổng điểm gần mốc 10–12 → dễ đảo chiều";
+        } else {
+            prediction = last; // giữ xu hướng
+            confidence = 0.55;
+            reason = "Không có cầu mạnh → giữ xu hướng gần nhất";
+        }
+
+        return { prediction, confidence, reason };
     }
 }
 
