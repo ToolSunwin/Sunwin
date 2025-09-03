@@ -27,14 +27,12 @@ let apiResponseData = {
 
 const MAX_HISTORY_SIZE = 1000;
 let currentSessionId = null;
-let lastPrediction = null;
-const fullHistory = [];
+let lastPrediction = null; 
+const fullHistory = []; 
 
-// Predictor (cầu thuận/nghịch auto detect)
 const predictor = new MasterPredictor();
 
-// ====== Cấu hình WebSocket ======
-const WEBSOCKET_URL = "wss://websocket.azhkthg1.net/websocket?token=eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJhbW91bnQiOjAsInVzZXJuYW1lIjoiU0NfYXBpc3Vud2luMTIzIn0.hgrRbSV6vnBwJMg9ZFtbx3rRu9mX_hZMZ_m5gMNhkw0";
+const WEBSOCKET_URL = "wss://websocket.azhkthg1.net/websocket?token=THAY_TOKEN_THẬT_VÀO_ĐÂY";
 const WS_HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36",
     "Origin": "https://play.sun.win"
@@ -43,7 +41,7 @@ const RECONNECT_DELAY = 2500;
 const PING_INTERVAL = 15000;
 
 const initialMessages = [
-    [1, "MiniGame", "GM_fbbdbebndbbc", "123123p", { "info": "{}", "signature": "xxx"}],
+    [1, "MiniGame", "GM_fbbdbebndbbc", "123123p", { "info": "{}", "signature": "dummy" }],
     [6, "MiniGame", "taixiuPlugin", { cmd: 1005 }],
     [6, "MiniGame", "lobbyPlugin", { cmd: 10001 }]
 ];
@@ -74,12 +72,32 @@ function connectWebSocket() {
 
     ws.on('pong', () => console.log('[📶] Ping OK.'));
 
+    // ==== NHẬN DẠNG MESSAGE (đã sửa) ====
     ws.on('message', async (message) => {
         try {
-            const data = JSON.parse(message);
-            if (!Array.isArray(data) || typeof data[1] !== 'object') return;
+            const raw = message.toString();
+            console.log("[RAW]", raw); // log mọi message về
 
-            const { cmd, sid, d1, d2, d3, gBB } = data[1];
+            let data;
+            try {
+                data = JSON.parse(raw);
+            } catch {
+                console.error("[❌] Không parse được JSON:", raw);
+                return;
+            }
+
+            // Nếu là mảng -> lấy phần tử 1
+            if (Array.isArray(data) && typeof data[1] === 'object') {
+                data = data[1];
+            }
+
+            // Nếu vẫn không phải object thì bỏ qua
+            if (typeof data !== "object") {
+                console.log("[ℹ️] Bỏ qua message không hợp lệ:", raw);
+                return;
+            }
+
+            const { cmd, sid, d1, d2, d3, gBB } = data;
 
             if (cmd === 1008 && sid) {
                 currentSessionId = sid;
@@ -90,7 +108,7 @@ function connectWebSocket() {
 
                 const total = d1 + d2 + d3;
                 const result = (total > 10) ? "Tài" : "Xỉu";
-
+                
                 let correctnessStatus = null;
                 if (lastPrediction && lastPrediction !== "?") {
                     if (lastPrediction === result) {
@@ -103,27 +121,26 @@ function connectWebSocket() {
                 }
 
                 const totalGames = apiResponseData.tong_dung + apiResponseData.tong_sai;
-                apiResponseData.ty_le_thang_lich_su = totalGames === 0 ? "0%" :
-                    `${((apiResponseData.tong_dung / totalGames) * 100).toFixed(0)}%`;
+                apiResponseData.ty_le_thang_lich_su = totalGames === 0 ? "0%" : `${((apiResponseData.tong_dung / totalGames) * 100).toFixed(0)}%`;
 
-                const historyEntry = {
-                    session: currentSessionId, d1, d2, d3,
-                    totalScore: total, result,
+                const historyEntry = { 
+                    session: currentSessionId, d1, d2, d3, 
+                    totalScore: total, result, 
                     prediction: lastPrediction,
-                    correctness: correctnessStatus
+                    correctness: correctnessStatus 
                 };
                 fullHistory.push(historyEntry);
                 if (fullHistory.length > MAX_HISTORY_SIZE) fullHistory.shift();
-
-                // ✅ Cập nhật predictor với xúc xắc
-                await predictor.updateData({ dice: [d1, d2, d3], score: total, result: result });
-
-                // ✅ Lấy dự đoán mới
+                
+                // Cập nhật predictor với dữ liệu mới
+                await predictor.updateData({ score: total, result: result });
+                
+                // Lấy dự đoán mới từ predictor
                 const predictionResult = await predictor.predict();
-
+                
                 let finalPrediction = "?";
                 let predictionConfidence = "0%";
-
+                
                 if (predictionResult && predictionResult.prediction) {
                     finalPrediction = predictionResult.prediction;
                     predictionConfidence = `${(predictionResult.confidence * 100).toFixed(0)}%`;
@@ -142,8 +159,8 @@ function connectWebSocket() {
 
                 lastPrediction = finalPrediction;
                 currentSessionId = null;
-
-                console.log(`Phiên #${apiResponseData.phien}: ${apiResponseData.tong} (${result}) | Dự đoán mới: ${finalPrediction} | Tin cậy: ${apiResponseData.do_tin_cay} | Thắng: ${apiResponseData.ty_le_thang_lich_su}`);
+                
+                console.log(`Phiên #${apiResponseData.phien}: ${apiResponseData.tong} (${result}) | Dự đoán mới: ${finalPrediction} | Tin cậy: ${apiResponseData.do_tin_cay} | Tỷ lệ thắng: ${apiResponseData.ty_le_thang_lich_su}`);
             }
         } catch (e) {
             console.error('[❌] Lỗi xử lý message:', e.message);
@@ -163,7 +180,6 @@ function connectWebSocket() {
     });
 }
 
-// ====== API ======
 app.get('/sunlon', (req, res) => {
     res.setHeader('Content-Type', 'application/json; charset=utf-8');
     res.send(JSON.stringify(apiResponseData, null, 4));
@@ -208,12 +224,9 @@ app.get('/history', (req, res) => {
 });
 
 app.get('/', (req, res) => {
-    res.send(`<h2>🎯 API Phân Tích Sunwin Tài Xỉu</h2>
-              <p>Xem kết quả JSON: <a href="/sunlon">/sunlon</a></p>
-              <p>Xem lịch sử 1000 phiên gần nhất: <a href="/history">/history</a></p>`);
+    res.send(`<h2>🎯 API Phân Tích Sunwin Tài Xỉu</h2><p>Xem JSON: <a href="/sunlon">/sunlon</a></p><p>Xem lịch sử: <a href="/history">/history</a></p>`);
 });
 
-// ====== Start Server ======
 app.listen(PORT, () => {
     console.log(`[🌐] Server is running at http://localhost:${PORT}`);
     connectWebSocket();
