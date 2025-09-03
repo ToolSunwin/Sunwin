@@ -1,80 +1,70 @@
 // thuatoan.js
 class MasterPredictor {
-    constructor(maxHistorySize = 1000) {
+    constructor(maxHistorySize = 1000, subtract = 5) {
         this.history = [];
         this.maxHistorySize = maxHistorySize;
+        this.subtract = subtract; 
+        this.mode = "thuan"; // mặc định, sẽ auto detect lại
     }
 
     async updateData(gameData) {
-        // gameData: {score, result}
+        // gameData: {dice:[d1,d2,d3], score, result}
         this.history.push(gameData);
         if (this.history.length > this.maxHistorySize) this.history.shift();
+
+        // đủ dữ liệu thì auto nhận biết cầu
+        if (this.history.length >= 20) {
+            this.autoDetectMode();
+        }
+    }
+
+    calcCau(d1, d2, d3, mode) {
+        // công thức: tổng 3 xí ngầu + xúc xắc 2 - subtract
+        const R = (d1 + d2 + d3 + d2) - this.subtract;
+        const parity = Math.abs(R) % 2; // chẵn/lẻ
+        if (mode === "thuan") {
+            return parity === 0 ? "Xỉu" : "Tài";
+        } else {
+            return parity === 0 ? "Tài" : "Xỉu";
+        }
+    }
+
+    autoDetectMode() {
+        const recent = this.history.slice(-30); // lấy 30 phiên gần nhất
+        let correctThuan = 0, correctNghich = 0;
+
+        for (const h of recent) {
+            const predThuan = this.calcCau(...h.dice, "thuan");
+            const predNghich = this.calcCau(...h.dice, "nghich");
+            if (predThuan === h.result) correctThuan++;
+            if (predNghich === h.result) correctNghich++;
+        }
+
+        const accThuan = correctThuan / recent.length;
+        const accNghich = correctNghich / recent.length;
+
+        // in log theo dõi
+        console.log(`[AUTO-DETECT] Cầu Thuận đúng ${correctThuan}/${recent.length} (${(accThuan*100).toFixed(1)}%)`);
+        console.log(`[AUTO-DETECT] Cầu Nghịch đúng ${correctNghich}/${recent.length} (${(accNghich*100).toFixed(1)}%)`);
+
+        // chọn cầu mạnh hơn
+        this.mode = accThuan >= accNghich ? "thuan" : "nghich";
+        console.log(`[AUTO-DETECT] Đang chọn cầu: ${this.mode.toUpperCase()}`);
     }
 
     async predict() {
-        if (this.history.length < 10) {
-            return {
-                prediction: "?",
-                confidence: 0.5,
-                reason: "Chưa đủ dữ liệu để dự đoán"
-            };
+        if (this.history.length === 0) {
+            return { prediction: "?", confidence: 0.5, reason: "Chưa có dữ liệu" };
         }
 
-        // ================== PHÂN TÍCH ==================
-        const seq = this.history.map(h => h.result);     // chuỗi Tài/Xỉu
-        const totals = this.history.map(h => h.score);   // tổng điểm
-        const last = seq[seq.length - 1];
-        const lastScore = totals[totals.length - 1];
+        const lastDice = this.history[this.history.length - 1].dice;
+        const prediction = this.calcCau(...lastDice, this.mode);
 
-        // 1) Tính streak (chuỗi liên tiếp)
-        let streakLen = 1;
-        for (let i = seq.length - 2; i >= 0; i--) {
-            if (seq[i] === last) streakLen++;
-            else break;
-        }
-
-        // 2) Tính bias gần đây (20 phiên gần nhất)
-        const recent = seq.slice(-20);
-        const countTai = recent.filter(r => r === "Tài").length;
-        const ratioTai = countTai / recent.length;
-
-        // 3) Tín hiệu band (tổng điểm cực trị)
-        let bandSignal = null;
-        if (lastScore >= 14) bandSignal = "Xỉu";   // quá cao → dễ hồi Xỉu
-        if (lastScore <= 7)  bandSignal = "Tài";   // quá thấp → dễ hồi Tài
-
-        // ================== RA QUYẾT ĐỊNH ==================
-        let prediction = "Tài";
-        let confidence = 0.55;
-        let reason = "Không có cầu mạnh, nghiêng Tài nhẹ";
-
-        if (streakLen >= 3) {
-            prediction = (last === "Tài") ? "Xỉu" : "Tài";
-            confidence = 0.65;
-            reason = `Chuỗi ${streakLen} ${last} → dự đoán gãy`;
-        } else if (ratioTai > 0.65) {
-            prediction = "Xỉu";
-            confidence = 0.6;
-            reason = "Tỉ lệ Tài 20 phiên gần đây quá cao → hồi mean về Xỉu";
-        } else if (ratioTai < 0.35) {
-            prediction = "Tài";
-            confidence = 0.6;
-            reason = "Tỉ lệ Xỉu 20 phiên gần đây quá cao → hồi mean về Tài";
-        } else if (bandSignal) {
-            prediction = bandSignal;
-            confidence = 0.58;
-            reason = `Tổng điểm ${lastScore} nằm vùng cực trị → dễ hồi về ${bandSignal}`;
-        } else if (lastScore >= 9 && lastScore <= 12) {
-            prediction = last === "Tài" ? "Xỉu" : "Tài";
-            confidence = 0.57;
-            reason = "Tổng điểm gần mốc 10–12 → dễ đảo chiều";
-        } else {
-            prediction = last; // giữ xu hướng
-            confidence = 0.55;
-            reason = "Không có cầu mạnh → giữ xu hướng gần nhất";
-        }
-
-        return { prediction, confidence, reason };
+        return {
+            prediction,
+            confidence: 0.75,
+            reason: `Áp dụng cầu ${this.mode} với subtract ${this.subtract}`
+        };
     }
 }
 
