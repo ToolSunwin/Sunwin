@@ -41,7 +41,7 @@ const RECONNECT_DELAY = 2500;
 const PING_INTERVAL = 15000;
 
 const initialMessages = [
-    [1, "MiniGame", "GM_fbbdbebndbbc", "123123p", { "info": "{}", "signature": "dummy" }],
+    [1, "MiniGame", "GM_fbbdbebndbbc", "123123p", { "info": "{\"ipAddress\":\"2402:800:62cd:cb7c:1a7:7a52:9c3e:c290\",\"wsToken\":\"eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJnZW5kZXIiOjAsImNhblZpZXdTdGF0IjpmYWxzZSwiZGlzcGxheU5hbWUiOiJuZG5lYmViYnMiLCJib3QiOjAsImlzTWVyY2hhbnQiOmZhbHNlLCJ2ZXJpZmllZEJhbmtBY2NvdW50IjpmYWxzZSwicGxheUV2ZW50TG9iYnkiOmZhbHNlLCJjdXN0b21lcklkIjozMTIxMDczMTUsImFmZklkIjoiR0VNV0lOIiwiYmFubmVkIjpmYWxzZSwiYnJhbmQiOiJnZW0iLCJ0aW1lc3RhbXAiOjE3NTQ5MjYxMDI1MjcsImxvY2tHYW1lcyI6W10sImFtb3VudCI6MCwibG9ja0NoYXQiOmZhbHNlLCJwaG9uZVZlcmlmaWVkIjpmYWxzZSwiaXBBZGRyZXNzIjoiMjQwMjo4MDA6NjJjZDpjYjdjOjFhNzo3YTUyOjljM2U6YzI5MCIsIm11dGUiOmZhbHNlLCJhdmF0YXIiOiJodHRwczovL2ltYWdlcy5zd2luc2hvcC5uZXQvaW1hZ2VzL2F2YXRhci9hdmF0YXJfMDEucG5nIiwicGxhdGZvcm1JZCI6NSwidXNlcklkIjoiN2RhNDlhNDQtMjlhYS00ZmRiLWJkNGMtNjU5OTQ5YzU3NDdkIiwicmVnVGltZSI6MTc1NDkyNjAyMjUxNSwicGhvbmUiOiIiLCJkZXBvc2l0IjpmYWxzZSwidXNlcm5hbWUiOiJHTV9mYmJkYmVibmRiYmMifQ.DAyEeoAnz8we-Qd0xS0tnqOZ8idkUJkxksBjr_Gei8A\",\"locale\":\"vi\",\"userId\":\"7da49a44-29aa-4fdb-bd4c-659949c5747d\",\"username\":\"GM_fbbdbebndbbc\",\"timestamp\":1754926102527,\"refreshToken\":\"7cc4ad191f4348849f69427a366ea0fd.a68ece9aa85842c7ba523170d0a4ae3e\"}", "signature": "53D9E12F910044B140A2EC659167512E2329502FE84A6744F1CD5CBA9B6EC04915673F2CBAE043C4EDB94DDF88F3D3E839A931100845B8F179106E1F44ECBB4253EC536610CCBD0CE90BD8495DAC3E8A9DBDB46FE49B51E88569A6F117F8336AC7ADC226B4F213ECE2F8E0996F2DD5515476C8275F0B2406CDF2987F38A6DA24"}],
     [6, "MiniGame", "taixiuPlugin", { cmd: 1005 }],
     [6, "MiniGame", "lobbyPlugin", { cmd: 10001 }]
 ];
@@ -72,32 +72,12 @@ function connectWebSocket() {
 
     ws.on('pong', () => console.log('[📶] Ping OK.'));
 
-    // ==== NHẬN DẠNG MESSAGE (đã sửa) ====
     ws.on('message', async (message) => {
         try {
-            const raw = message.toString();
-            console.log("[RAW]", raw); // log mọi message về
+            const data = JSON.parse(message);
+            if (!Array.isArray(data) || typeof data[1] !== 'object') return;
 
-            let data;
-            try {
-                data = JSON.parse(raw);
-            } catch {
-                console.error("[❌] Không parse được JSON:", raw);
-                return;
-            }
-
-            // Nếu là mảng -> lấy phần tử 1
-            if (Array.isArray(data) && typeof data[1] === 'object') {
-                data = data[1];
-            }
-
-            // Nếu vẫn không phải object thì bỏ qua
-            if (typeof data !== "object") {
-                console.log("[ℹ️] Bỏ qua message không hợp lệ:", raw);
-                return;
-            }
-
-            const { cmd, sid, d1, d2, d3, gBB } = data;
+            const { cmd, sid, d1, d2, d3, gBB } = data[1];
 
             if (cmd === 1008 && sid) {
                 currentSessionId = sid;
@@ -132,17 +112,17 @@ function connectWebSocket() {
                 fullHistory.push(historyEntry);
                 if (fullHistory.length > MAX_HISTORY_SIZE) fullHistory.shift();
                 
-                // Cập nhật predictor với dữ liệu mới
+                // Cập nhật thuật toán với dữ liệu mới (điểm và kết quả)
                 await predictor.updateData({ score: total, result: result });
                 
-                // Lấy dự đoán mới từ predictor
+                // Lấy dự đoán mới từ thuật toán
                 const predictionResult = await predictor.predict();
                 
                 let finalPrediction = "?";
                 let predictionConfidence = "0%";
                 
                 if (predictionResult && predictionResult.prediction) {
-                    finalPrediction = predictionResult.prediction;
+                    finalPrediction = predictionResult.prediction; // Sử dụng trực tiếp dự đoán từ thuật toán
                     predictionConfidence = `${(predictionResult.confidence * 100).toFixed(0)}%`;
                 }
 
@@ -224,7 +204,7 @@ app.get('/history', (req, res) => {
 });
 
 app.get('/', (req, res) => {
-    res.send(`<h2>🎯 API Phân Tích Sunwin Tài Xỉu</h2><p>Xem JSON: <a href="/sunlon">/sunlon</a></p><p>Xem lịch sử: <a href="/history">/history</a></p>`);
+    res.send(`<h2>🎯 API Phân Tích Sunwin Tài Xỉu</h2><p>Xem kết quả JSON: <a href="/sunlon">/có lồn</a></p><p>Xem lịch sử 1000 phiên gần nhất: <a href="/history">/có buồi</a></p>`);
 });
 
 app.listen(PORT, () => {
