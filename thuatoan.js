@@ -1,60 +1,83 @@
 const TAI = "Tài";
 const XIU = "Xỉu";
 
-class MasterPredictor {
-    constructor(maxHistorySize = 1000) {
-        this.history = []; // Lưu lịch sử các phiên đã phân tích
-        this.maxHistorySize = maxHistorySize;
+class FormulaPredictor {
+    constructor() {
+        this.history = [];
+        this.subtractValue = 5; // Giá trị trừ
+        this.minRange = 12;     // Ngưỡng dưới
+        this.maxRange = 18;     // Ngưỡng trên
     }
 
-    // Cập nhật dữ liệu mới (score, result)
     async updateData(gameData) {
-        // gameData = { score, result }
         this.history.push(gameData);
-        if (this.history.length > this.maxHistorySize) {
-            this.history.shift();
-        }
     }
 
-    // Dự đoán phiên tiếp theo
+    // Tính toán kết quả theo công thức
+    calculateFormula(dice) {
+        const [d1, d2, d3] = dice;
+        return (d1 + d2 + d3 + d2) - this.subtractValue;
+    }
+
     async predict() {
         if (this.history.length === 0) {
-            // Nếu chưa có dữ liệu, dự đoán ngẫu nhiên
-            const randomPrediction = Math.random() > 0.5 ? TAI : XIU;
-            const randomConfidence = Math.random() * 0.8 + 0.1; // 10% → 90%
             return {
-                prediction: randomPrediction,
-                confidence: randomConfidence,
-                reason: "Chưa có dữ liệu lịch sử, dự đoán ngẫu nhiên"
+                prediction: "?",
+                confidence: 0.5,
+                reason: "Chưa có dữ liệu để dự đoán"
             };
         }
 
-        // Lấy 5 phiên gần nhất
-        const last5 = this.history.slice(-5);
-        const taiCount = last5.filter(h => h.result === TAI).length;
-        const xiuCount = last5.filter(h => h.result === XIU).length;
+        // Lấy kết quả xí ngầu gần nhất
+        const lastDice = this.history[this.history.length - 1].dice;
+        
+        // Tính toán theo công thức
+        const result = this.calculateFormula(lastDice);
+        
+        // Dự đoán dựa trên khoảng giá trị
+        const prediction = (result >= this.minRange && result <= this.maxRange) ? TAI : XIU;
+        
+        return {
+            prediction: prediction,
+            confidence: 0.8, // Độ tin cậy cao
+            reason: `Kết quả tính toán: ${result} (${lastDice.join('+')}+${lastDice[1]}-${this.subtractValue}=${result}) -> ${prediction}`,
+            calculation: {
+                dice: lastDice,
+                formula: `(${lastDice.join('+')}+${lastDice[1]}-${this.subtractValue})`,
+                result: result,
+                range: `${this.minRange}-${this.maxRange}`
+            }
+        };
+    }
 
-        let prediction, confidence;
-
-        // Dự đoán ngược chuỗi gần nhất
-        if (taiCount > xiuCount) {
-            prediction = XIU;
-            confidence = taiCount / 5; // tỷ lệ Tài trong 5 phiên
-        } else if (xiuCount > taiCount) {
-            prediction = TAI;
-            confidence = xiuCount / 5; // tỷ lệ Xỉu trong 5 phiên
-        } else {
-            // Nếu bằng nhau, dự đoán ngẫu nhiên
-            prediction = Math.random() > 0.5 ? TAI : XIU;
-            confidence = 0.5;
+    // Phương thức kiểm tra công thức với dữ liệu lịch sử
+    async testFormula() {
+        if (this.history.length === 0) {
+            return "Chưa có dữ liệu để kiểm tra";
         }
 
+        let correct = 0;
+        let total = this.history.length;
+
+        for (const game of this.history) {
+            const result = this.calculateFormula(game.dice);
+            const prediction = (result >= this.minRange && result <= this.maxRange) ? TAI : XIU;
+            
+            if (prediction === game.result) {
+                correct++;
+            }
+        }
+
+        const accuracy = (correct / total) * 100;
+        
         return {
-            prediction,
-            confidence,
-            reason: `Rule-based dựa trên 5 phiên gần nhất (Tài:${taiCount}, Xỉu:${xiuCount})`
+            totalGames: total,
+            correctPredictions: correct,
+            accuracy: accuracy.toFixed(2) + '%',
+            formula: `Tổng 3 xí ngầu + xí ngầu 2 - ${this.subtractValue}`,
+            condition: `Nếu kết quả từ ${this.minRange} đến ${this.maxRange} thì Tài, ngược lại Xỉu`
         };
     }
 }
 
-module.exports = { MasterPredictor };
+module.exports = { FormulaPredictor, TAI, XIU };
