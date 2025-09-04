@@ -1,7 +1,7 @@
 // thuatoan.js
 class MasterPredictor {
     constructor(maxHistorySize = 1000) {
-        this.history = [];           // lưu lịch sử {session, d1, d2, d3, score, result}
+        this.history = [];
         this.maxHistorySize = maxHistorySize;
     }
 
@@ -12,7 +12,6 @@ class MasterPredictor {
         }
     }
 
-    // Hàm tính giá trị công thức
     computeValue() {
         if (this.history.length < 2) return null;
 
@@ -21,53 +20,35 @@ class MasterPredictor {
 
         let value = last.score + prev.d2;
 
-        console.log(`\n[DEBUG] --- Tính toán phiên mới ---`);
-        console.log(`[DEBUG] Phiên N-1: ${last.session}, score=${last.score}`);
-        console.log(`[DEBUG] Phiên N-2: ${prev.session}, d2=${prev.d2}`);
-        console.log(`[DEBUG] Sum ban đầu = ${value}`);
-
-        // trừ 18, 12, 5 nếu đủ
         [18, 12, 5].forEach(threshold => {
-            if (value >= threshold) {
-                value -= threshold;
-                console.log(`[DEBUG] Trừ ${threshold} => ${value}`);
-            }
+            if (value >= threshold) value -= threshold;
         });
 
-        console.log(`[DEBUG] Value cuối cùng = ${value}`);
         return value;
     }
 
     async predict() {
         const value = this.computeValue();
         if (value === null) {
-            return {
-                prediction: "?",
-                confidence: 0.5,
-                reason: "Chưa đủ dữ liệu"
-            };
+            return { prediction: "?", confidence: 0.5, reason: "Chưa đủ dữ liệu" };
         }
 
-        // công thức gốc: chẵn = Tài, lẻ = Xỉu
         const isEven = value % 2 === 0;
-        let prediction;
 
         if (this.history.length < 30) {
-            // 30 phiên đầu: mặc định cầu Thuận
-            prediction = isEven ? "Tài" : "Xỉu";
-            console.log(`[DEBUG] (<30 phiên) Cầu Thuận mặc định: value=${value} (${isEven ? "chẵn" : "lẻ"}) => ${prediction}`);
+            // ✅ 30 phiên đầu: chỉ áp dụng công thức gốc, tính từng phiên
+            const prediction = isEven ? "Tài" : "Xỉu";
             return {
                 prediction,
                 confidence: 0.55,
-                reason: `30 phiên đầu → cầu Thuận mặc định, value=${value}, ${isEven ? "chẵn=Tài" : "lẻ=Xỉu"}`
+                reason: `(<30 phiên) Cầu Thuận mặc định, value=${value} → ${prediction}`
             };
         }
 
-        // Sau 30 phiên → chọn cầu Thuận hay Nghịch
-        const predictThuan = isEven ? "Tài" : "Xỉu";   // đúng công thức
-        const predictNghich = isEven ? "Xỉu" : "Tài";  // đảo ngược
+        // ✅ Sau 30 phiên: chọn cầu Thuận/Nghịch dựa vào thống kê
+        const predictThuan = isEven ? "Tài" : "Xỉu";
+        const predictNghich = isEven ? "Xỉu" : "Tài";
 
-        // Kiểm tra 30 phiên gần nhất
         const recent = this.history.slice(-30);
         let correctThuan = 0, correctNghich = 0;
 
@@ -85,16 +66,12 @@ class MasterPredictor {
         }
 
         const useThuan = correctThuan >= correctNghich;
-        prediction = useThuan ? predictThuan : predictNghich;
-
-        console.log(`[DEBUG] (>=30 phiên) Value=${value}, ${isEven ? "chẵn" : "lẻ"}`);
-        console.log(`[DEBUG] Thống kê 30 phiên: Thuận=${correctThuan}, Nghịch=${correctNghich}`);
-        console.log(`[DEBUG] => Dùng ${useThuan ? "Thuận" : "Nghịch"} => ${prediction}`);
+        const finalPrediction = useThuan ? predictThuan : predictNghich;
 
         return {
-            prediction,
+            prediction: finalPrediction,
             confidence: 0.6,
-            reason: `Value=${value}, ${isEven ? "chẵn" : "lẻ"} → ${useThuan ? "Thuận" : "Nghịch"}`
+            reason: `(>=30 phiên) Value=${value}, chọn ${useThuan ? "Thuận" : "Nghịch"}`
         };
     }
 }
