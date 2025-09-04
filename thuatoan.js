@@ -1,69 +1,88 @@
 // thuatoan.js
 class MasterPredictor {
-    constructor(maxHistorySize = 1000, subtract = 5) {
-        this.history = [];
+    constructor(maxHistorySize = 1000) {
+        this.history = [];           // lưu lịch sử {session, dice[], total, result}
         this.maxHistorySize = maxHistorySize;
-        this.subtract = subtract; 
-        this.mode = "thuan"; // mặc định, sẽ auto detect lại
     }
 
     async updateData(gameData) {
-        // gameData: {dice:[d1,d2,d3], score, result}
+        // gameData: {score, result, d1, d2, d3, session}
         this.history.push(gameData);
-        if (this.history.length > this.maxHistorySize) this.history.shift();
-
-        // đủ dữ liệu thì auto nhận biết cầu
-        if (this.history.length >= 20) {
-            this.autoDetectMode();
+        if (this.history.length > this.maxHistorySize) {
+            this.history.shift();
         }
     }
 
-    calcCau(d1, d2, d3, mode) {
-        // công thức: tổng 3 xí ngầu + xúc xắc 2 - subtract
-        const R = (d1 + d2 + d3 + d2) - this.subtract;
-        const parity = Math.abs(R) % 2; // chẵn/lẻ
-        if (mode === "thuan") {
-            return parity === 0 ? "Xỉu" : "Tài";
-        } else {
-            return parity === 0 ? "Tài" : "Xỉu";
-        }
-    }
+    // Hàm tính toán theo công thức bạn đưa
+    computeValue() {
+        if (this.history.length < 2) return null;
 
-    autoDetectMode() {
-        const recent = this.history.slice(-30); // lấy 30 phiên gần nhất
-        let correctThuan = 0, correctNghich = 0;
+        const last = this.history[this.history.length - 1];     // phiên N-1
+        const prev = this.history[this.history.length - 2];     // phiên N-2
 
-        for (const h of recent) {
-            const predThuan = this.calcCau(...h.dice, "thuan");
-            const predNghich = this.calcCau(...h.dice, "nghich");
-            if (predThuan === h.result) correctThuan++;
-            if (predNghich === h.result) correctNghich++;
-        }
+        let value = last.score + prev.d2; // tổng phiên N-1 + xúc xắc 2 của N-2
 
-        const accThuan = correctThuan / recent.length;
-        const accNghich = correctNghich / recent.length;
+        // trừ dần 18, 12, 5 nếu >=
+        [18, 12, 5].forEach(threshold => {
+            if (value >= threshold) value -= threshold;
+        });
 
-        // in log theo dõi
-        console.log(`[AUTO-DETECT] Cầu Thuận đúng ${correctThuan}/${recent.length} (${(accThuan*100).toFixed(1)}%)`);
-        console.log(`[AUTO-DETECT] Cầu Nghịch đúng ${correctNghich}/${recent.length} (${(accNghich*100).toFixed(1)}%)`);
-
-        // chọn cầu mạnh hơn
-        this.mode = accThuan >= accNghich ? "thuan" : "nghich";
-        console.log(`[AUTO-DETECT] Đang chọn cầu: ${this.mode.toUpperCase()}`);
+        return value;
     }
 
     async predict() {
-        if (this.history.length === 0) {
-            return { prediction: "?", confidence: 0.5, reason: "Chưa có dữ liệu" };
+        if (this.history.length < 30) {
+            // 30 phiên đầu: mặc định cầu Thuận
+            const value = this.computeValue();
+            if (value === null) {
+                return { prediction: "?", confidence: 0.5, reason: "Chưa đủ dữ liệu" };
+            }
+
+            const isEven = value % 2 === 0;
+            const prediction = isEven ? "Tài" : "Xỉu"; // công thức gốc
+            return {
+                prediction,
+                confidence: 0.55,
+                reason: `30 phiên đầu → mặc định cầu Thuận, giá trị=${value}, ${isEven ? "chẵn=Tài" : "lẻ=Xỉu"}`
+            };
         }
 
-        const lastDice = this.history[this.history.length - 1].dice;
-        const prediction = this.calcCau(...lastDice, this.mode);
+        // Sau 30 phiên → so sánh cầu Thuận/Nghịch
+        const value = this.computeValue();
+        if (value === null) {
+            return { prediction: "?", confidence: 0.5, reason: "Chưa đủ dữ liệu" };
+        }
+        const isEven = value % 2 === 0;
+
+        // Dự đoán theo 2 cầu
+        const predictThuan = isEven ? "Xỉu" : "Tài";
+        const predictNghich = isEven ? "Tài" : "Xỉu";
+
+        // Tính độ chính xác của Thuận và Nghịch trong 30 phiên gần nhất
+        const recent = this.history.slice(-30);
+        let correctThuan = 0, correctNghich = 0;
+        for (let i = 2; i < recent.length; i++) {
+            const val = recent[i - 1].score + recent[i - 2].d2;
+            let temp = val;
+            [18, 12, 5].forEach(threshold => {
+                if (temp >= threshold) temp -= threshold;
+            });
+            const even = temp % 2 === 0;
+            const pThuan = even ? "Xỉu" : "Tài";
+            const pNghich = even ? "Tài" : "Xỉu";
+
+            if (pThuan === recent[i].result) correctThuan++;
+            if (pNghich === recent[i].result) correctNghich++;
+        }
+
+        const useThuan = correctThuan >= correctNghich;
+        const finalPrediction = useThuan ? predictThuan : predictNghich;
+        const confidence = 0.6 + Math.min(0.2, Math.abs(correctThuan - correctNghich) / recent.length);
 
         return {
-            prediction,
-            confidence: 0.75,
-            reason: `Áp dụng cầu ${this.mode} với subtract ${this.subtract}`
+            prediction: finalPrediction,
+            confidence,
+            reason: `Giá trị=${value}, ${isEven ? "chẵn" : "lẻ"} → ${useThuan ? "cầu Thuận" : "cầu Nghịch"} (Thuận đúng ${correctThuan}, Nghịch đúng ${correctNghich} trong 30 phiên)`
         };
     }
 }
