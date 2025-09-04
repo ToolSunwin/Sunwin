@@ -2,7 +2,7 @@
 const WebSocket = require('ws');
 const express = require('express');
 const cors = require('cors');
-const { MasterPredictor } = require('./thuatoan.js');
+const { FormulaPredictor } = require('./thuatoan.js'); // Sửa đổi ở đây
 
 const app = express();
 app.use(cors());
@@ -30,7 +30,7 @@ let currentSessionId = null;
 let lastPrediction = null; 
 const fullHistory = []; 
 
-const predictor = new MasterPredictor();
+const predictor = new FormulaPredictor(); // Sửa đổi ở đây
 
 const WEBSOCKET_URL = "wss://websocket.azhkthg1.net/websocket?token=eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJhbW91bnQiOjAsInVzZXJuYW1lIjoiU0NfYXBpc3Vud2luMTIzIn0.hgrRbSV6vnBwJMg9ZFtbx3rRu9mX_hZMZ_m5gMNhkw0";
 const WS_HEADERS = {
@@ -41,7 +41,7 @@ const RECONNECT_DELAY = 2500;
 const PING_INTERVAL = 15000;
 
 const initialMessages = [
-    [1, "MiniGame", "GM_fbbdbebndbbc", "123123p", { "info": "{\"ipAddress\":\"2402:800:62cd:cb7c:1a7:7a52:9c3e:c290\",\"wsToken\":\"eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJnZW5kZXIiOjAsImNhblZpZXdTdGF0IjpmYWxzZSwiZGlzcGxheU5hbWUiOiJuZG5lYmViYnMiLCJib3QiOjAsImlzTWVyY2hhbnQiOmZhbHNlLCJ2ZXJpZmllZEJhbmtBY2NvdW50IjpmYWxzZSwicGxheUV2ZW50TG9iYnkiOmZhbHNlLCJjdXN0b21lcklkIjozMTIxMDczMTUsImFmZklkIjoiR0VNV0lOIiwiYmFubmVkIjpmYWxzZSwiYnJhbmQiOiJnZW0iLCJ0aW1lc3RhbXAiOjE3NTQ5MjYxMDI1MjcsImxvY2tHYW1lcyI6W10sImFtb3VudCI6MCwibG9ja0NoYXQiOmZhbHNlLCJwaG9uZVZlcmlmaWVkIjpmYWxzZSwiaXBBZGRyZXNzIjoiMjQwMjo4MDA6NjJjZDpjYjdjOjFhNzo3YTUyOjljM2U6YzI5MCIsIm11dGUiOmZhbHNlLCJhdmF0YXIiOiJodHRwczovL2ltYWdlcy5zd2luc2hvcC5uZXQvaW1hZ2VzL2F2YXRhci9hdmF0YXJfMDEucG5nIiwicGxhdGZvcm1JZCI6NSwidXNlcklkIjoiN2RhNDlhNDQtMjlhYS00ZmRiLWJkNGMtNjU5OTQ5YzU3NDdkIiwicmVnVGltZSI6MTc1NDkyNjAyMjUxNSwicGhvbmUiOiIiLCJkZXBvc2l0IjpmYWxzZSwidXNlcm5hbWUiOiJHTV9mYmJkYmVibmRiYmMifQ.DAyEeoAnz8we-Qd0xS0tnqOZ8idkUJkxksBjr_Gei8A\",\"locale\":\"vi\",\"userId\":\"7da49a44-29aa-4fdb-bd4c-659949c5747d\",\"username\":\"GM_fbbdbebndbbc\",\"timestamp\":1754926102527,\"refreshToken\":\"7cc4ad191f4348849f69427a366ea0fd.a68ece9aa85842c7ba523170d0a4ae3e\"}", "signature": "53D9E12F910044B140A2EC659167512E2329502FE84A6744F1CD5CBA9B6EC04915673F2CBAE043C4EDB94DDF88F3D3E839A931100845B8F179106E1F44ECBB4253EC536610CCBD0CE90BD8495DAC3E8A9DBDB46FE49B51E88569A6F117F8336AC7ADC226B4F213ECE2F8E0996F2DD5515476C8275F0B2406CDF2987F38A6DA24"}],
+    [1, "MiniGame", "GM_fbbdbebndbbc", "123123p", { "info": "{\"ipAddress\":\"2402:800:62cd:cb7c:1a7:7a52:9c3e:c290\",\"wsToken\":\"eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJnZW5kZXIiOjAsImNhblZpZXdTdGF0IjpmYWxzZSwiZGlzcGxheU5hbWUiOiJuZG5lYmViYnMiLCJib3QiOjAsImlzTWVyY2hhbnQiOmZhbHNlLCJ2ZXJpZmllZEJhbmtBY2NvdW50IjpmYWxzZSwicGxheUV2ZW50TG9iYnkiOmZhbHNlLCJjdXN0b21lcklkIjozMTIxMDczMTUsImFmZklkIjoiR0VNV0lOIiwiYmFubmVkIjpmYWxzZSwiYnJhbmQiOiJnZW0iLCJ0aW1lc3RhbXAiOjE3NTQ5MjYxMDI1MjcsImxvY2tHYW1lcyI6W10sImFtb3VudCI6MCwibG5ja0NoYXQiOmZhbHNlLCJwaG9uZVZlcmlmaWVkIjpmYWxzZSwiaXBBZGRyZXNzIjoiMjQwMjo4MDA6NjJjZDpjYjdjOjFhNzo3YTUyOjljM2U6YzI5MCIsIm11dGUiOmZhbHNlLCJhdmF0YXIiOiJodHRwczovL2ltYWdlcy5zd2luc2hvcC5uZXQvaW1hZ2VzL2F2YXRhci9hdmF0YXJfMDEucG5nIiwicGxhdGZvcm1JZCI6NSwidXNlcklkIjoiN2RhNDlhNDQtMjlhYS00ZmRiLWJkNGMtNjU5OTQ5YzU3NDdkIiwicmVnVGltZSI6MTc1NDkyNjAyMjUxNSwicGhvbmUiOiIiLCJkZXBvc2l0IjpmYWxzZSwidXNlcm5hbWUiOiJHTV9mYmJkYmVibmRiYmMifQ.DAyEeoAnz8we-Qd0xS0tnqOZ8idkUJkxksBjr_Gei8A\",\"locale\":\"vi\",\"userId\":\"7da49a44-29aa-4fdb-bd4c-659949c5747d\",\"username\":\"GM_fbbdbebndbbc\",\"timestamp\":1754926102527,\"refreshToken\":\"7cc4ad191f4348849f69427a366ea0fd.a68ece9aa85842c7ba523170d0a4ae3e\"}", "signature": "53D9E12F910044B140A2EC659167512E2329502FE84A6744F1CD5CBA9B6EC04915673F2CBAE043C4EDB94DDF88F3D3E839A931100845B8F179106E1F44ECBB4253EC536610CCBD0CE90BD8495DAC3E8A9DBDB46FE49B51E88569A6F117F8336AC7ADC226B4F213ECE2F8E0996F2DD5515476C8275F0B2406CDF2987F38A6DA24"}],
     [6, "MiniGame", "taixiuPlugin", { cmd: 1005 }],
     [6, "MiniGame", "lobbyPlugin", { cmd: 10001 }]
 ];
@@ -61,12 +61,20 @@ function connectWebSocket() {
         console.log('[✅] WebSocket connected.');
         initialMessages.forEach((msg, i) => {
             setTimeout(() => {
-                if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(msg));
+                if (ws.readyState === WebSocket.OPEN) {
+                    try {
+                        ws.send(JSON.stringify(msg));
+                    } catch (e) {
+                        console.error('[❌] Lỗi gửi tin nhắn ban đầu:', e.message);
+                    }
+                }
             }, i * 600);
         });
         clearInterval(pingInterval);
         pingInterval = setInterval(() => {
-            if (ws.readyState === WebSocket.OPEN) ws.ping();
+            if (ws.readyState === WebSocket.OPEN) {
+                ws.ping();
+            }
         }, PING_INTERVAL);
     });
 
@@ -75,7 +83,10 @@ function connectWebSocket() {
     ws.on('message', async (message) => {
         try {
             const data = JSON.parse(message);
-            if (!Array.isArray(data) || typeof data[1] !== 'object') return;
+            // Kiểm tra cấu trúc data để tránh lỗi
+            if (!Array.isArray(data) || data.length < 2 || typeof data[1] !== 'object' || data[1] === null) {
+                return;
+            }
 
             const { cmd, sid, d1, d2, d3, gBB } = data[1];
 
@@ -84,7 +95,7 @@ function connectWebSocket() {
             }
 
             if (cmd === 1003 && gBB) {
-                if (!d1 || !d2 || !d3) return;
+                if (d1 === undefined || d2 === undefined || d3 === undefined) return;
 
                 const total = d1 + d2 + d3;
                 const result = (total > 10) ? "Tài" : "Xỉu";
@@ -113,7 +124,8 @@ function connectWebSocket() {
                 if (fullHistory.length > MAX_HISTORY_SIZE) fullHistory.shift();
                 
                 // Cập nhật thuật toán với dữ liệu mới (điểm và kết quả)
-                await predictor.updateData({ score: total, result: result });
+                // Sửa đổi ở đây
+                await predictor.updateData({ score: total, result: result, dice: [d1, d2, d3] });
                 
                 // Lấy dự đoán mới từ thuật toán
                 const predictionResult = await predictor.predict();
@@ -122,7 +134,7 @@ function connectWebSocket() {
                 let predictionConfidence = "0%";
                 
                 if (predictionResult && predictionResult.prediction) {
-                    finalPrediction = predictionResult.prediction; // Sử dụng trực tiếp dự đoán từ thuật toán
+                    finalPrediction = predictionResult.prediction;
                     predictionConfidence = `${(predictionResult.confidence * 100).toFixed(0)}%`;
                 }
 
@@ -140,15 +152,15 @@ function connectWebSocket() {
                 lastPrediction = finalPrediction;
                 currentSessionId = null;
                 
-                console.log(`Phiên #${apiResponseData.phien}: ${apiResponseData.tong} (${result}) | Dự đoán mới: ${finalPrediction} | Tin cậy: ${apiResponseData.do_tin_cay} | Tỷ lệ thắng: ${apiResponseData.ty_le_thang_lich_su}`);
+                console.log(`[🎲] Phiên #${apiResponseData.phien}: ${apiResponseData.tong} (${result}) | Dự đoán mới: ${finalPrediction} (${apiResponseData.do_tin_cay}) | Tỷ lệ thắng: ${apiResponseData.ty_le_thang_lich_su}`);
             }
         } catch (e) {
-            console.error('[❌] Lỗi xử lý message:', e.message);
+            console.error('[❌] Lỗi xử lý message:', e.message, 'Data:', message.toString());
         }
     });
 
     ws.on('close', (code, reason) => {
-        console.log(`[🔌] WebSocket closed. Code: ${code}, Reason: ${reason.toString()}. Reconnecting...`);
+        console.log(`[🔌] WebSocket closed. Code: ${code}, Reason: ${reason.toString()}. Reconnecting in ${RECONNECT_DELAY / 1000}s...`);
         clearInterval(pingInterval);
         clearTimeout(reconnectTimeout);
         reconnectTimeout = setTimeout(connectWebSocket, RECONNECT_DELAY);
@@ -156,17 +168,21 @@ function connectWebSocket() {
 
     ws.on('error', (err) => {
         console.error('[❌] WebSocket error:', err.message);
-        ws.close();
     });
 }
 
-app.get('/sunlon', (req, res) => {
+app.get('/api', (req, res) => {
     res.setHeader('Content-Type', 'application/json; charset=utf-8');
-    res.send(JSON.stringify(apiResponseData, null, 4));
+    res.json(apiResponseData);
 });
 
 app.get('/history', (req, res) => {
     res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    const historyHtml = generateHistoryHtml(fullHistory);
+    res.send(historyHtml);
+});
+
+function generateHistoryHtml(history) {
     let html = `<style>
                     body{font-family:monospace;background-color:#121212;color:#e0e0e0;}
                     h2{color:#4e8af4;}
@@ -174,12 +190,12 @@ app.get('/history', (req, res) => {
                     .tai, .dung{color:#28a745; font-weight:bold;}
                     .xiu, .sai{color:#dc3545; font-weight:bold;}
                 </style>
-                <h2>Lịch sử ${fullHistory.length} phiên gần nhất</h2>`;
+                <h2>Lịch sử ${history.length} phiên gần nhất</h2>`;
 
-    if (fullHistory.length === 0) {
+    if (history.length === 0) {
         html += '<p>Chưa có dữ liệu lịch sử.</p>';
     } else {
-        [...fullHistory].reverse().forEach(h => {
+        [...history].reverse().forEach(h => {
             const resultClass = h.result === 'Tài' ? 'tai' : 'xiu';
             let statusHtml = '';
             if (h.correctness === "ĐÚNG") {
@@ -200,11 +216,14 @@ app.get('/history', (req, res) => {
                      </div>`;
         });
     }
-    res.send(html);
-});
+    return html;
+}
 
 app.get('/', (req, res) => {
-    res.send(`<h2>🎯 API Phân Tích Sunwin Tài Xỉu</h2><p>Xem kết quả JSON: <a href="/sunlon">/có lồn</a></p><p>Xem lịch sử 1000 phiên gần nhất: <a href="/history">/có buồi</a></p>`);
+    res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    res.send(`<h2>🎯 API Phân Tích Sunwin Tài Xỉu</h2>
+              <p>Xem kết quả JSON: <a href="/api">/api</a></p>
+              <p>Xem lịch sử ${MAX_HISTORY_SIZE} phiên gần nhất: <a href="/history">/history</a></p>`);
 });
 
 app.listen(PORT, () => {
